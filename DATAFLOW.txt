@@ -1,0 +1,1 @@
+Image URL → Download → Load → Detect → Recognize → Parse → Format → JSON Output

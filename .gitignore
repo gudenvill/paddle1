@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+output/
+input/
+*.png
+*.jpg
+*.jpeg
+debug_decoded.png
+root/
+
+# Logs
+*.log
+
+# Model files
+*.tar
+*.pdparams
+
+# Temp files
+.DS_Store
+Thumbs.db

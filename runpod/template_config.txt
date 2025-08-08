@@ -1,0 +1,20 @@
+RunPod Template Configuration
+=============================
+
+Docker Image: gudenvill/paddle-ocr-websocket:cudnn-gpu
+Container Disk: 20 GB
+Volume Disk: 0 GB
+Volume Mount Path: (empty)
+HTTP Port: 8765 (label: http)
+TCP Ports: (none)
+Environment Variables: (none)
+GPU: Required (CUDA 11.8 compatible)
+
+Template Type: PyTorch 2.1 with CUDA 11.8
+
+Notes:
+- GPU detection confirmed working: "GPU environment detected: True"
+- Uses paddlepaddle-gpu==2.6.1 with paddleocr==2.8.1
+- WebSocket server on port 8765
+- Accepts base64 encoded images
+- Returns OCR text with exact pixel coordinates

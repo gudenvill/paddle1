@@ -1,0 +1,25 @@
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Test requirements - minimal for GPU detection
+COPY requirements.txt .
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install paddlepaddle-gpu==2.6.1.post117 -f https://www.paddlepaddle.org.cn/whl/linux/mkl/avx/stable.html && \
+    python3 -m pip install paddleocr==2.8.1
+
+# Copy only the OCR client code for testing
+COPY src/utils/ocr_client.py ./src/utils/
+COPY src/ocr_types/ ./src/ocr_types/
+
+# Simple test command
+CMD ["python3", "-c", "import os; os.environ['CUDA_VISIBLE_DEVICES']='0'; from src.utils.ocr_client import get_ocr_client; ocr = get_ocr_client(); print('SUCCESS: OCR client with GPU support created!')"]
