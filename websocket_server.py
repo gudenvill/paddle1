@@ -51,7 +51,9 @@ class WebSocketOCRServer:
         )
         
         # Create OCR client
+        logger.info("📦 Creating OCR client (this will download models if needed)...")
         self.ocr_client = get_ocr_client(self.ocr_config)
+        logger.info("✅ OCR client created successfully")
         
         init_time = time.time() - start_time
         logger.info(f"✅ OCR client initialized in {init_time:.2f}s")

@@ -1,0 +1,170 @@
+RUNPOD GPU DEBUGGING GUIDE
+==========================
+
+CURRENT SITUATION:
+------------------
+We have a PaddleOCR WebSocket server that works PERFECTLY locally (CPU mode) but fails on RunPod (GPU mode).
+
+THE PROBLEM:
+------------
+- Local Docker (CPU): Detects 32 text regions ✅
+- RunPod (GPU): Detects 0 text regions ❌
+- GPU IS working (processing time 0.12s vs 3.5s on CPU)
+- Base64 encoding/decoding verified working
+- Models download successfully
+- Server runs without errors
+
+SYMPTOMS ON RUNPOD:
+-------------------
+1. GPU detected: True ✅
+2. CUDA 11.8.0 loaded ✅
+3. Models downloaded ✅
+4. WebSocket connects ✅
+5. Image received ✅
+6. Processing fast (0.12s) ✅
+7. BUT: rec_res num : 0 ❌
+8. No text regions found ❌
+
+KEY FILES TO CHECK:
+-------------------
+1. src/utils/ocr_client.py (line 38-52) - OCR initialization
+2. src/pipeline/parse_results.py - Results parsing
+3. websocket_server.py - Server main file
+
+SETUP COMMANDS FOR RUNPOD:
+--------------------------
+# You're already SSH'd in, now run:
+
+# 1. Install dependencies
+apt-get update && apt-get install -y git python3-pip libgomp1 libglib2.0-0 libgl1-mesa-glx libsm6 libxext6 libxrender-dev wget
+
+# 2. Clone repo
+cd /workspace
+git clone https://github.com/gudenvill/paddle1.git
+cd paddle1
+
+# 3. Install Python packages
+pip install --upgrade pip
+pip install paddlepaddle-gpu==2.6.1
+pip install paddleocr==2.8.1
+pip install websockets pillow numpy
+
+# 4. Test GPU detection
+python3 -c "import paddle; print('GPU:', paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0)"
+
+# 5. Create test script to debug OCR directly
+cat > test_gpu_ocr.py << 'EOF'
+from paddleocr import PaddleOCR
+import paddle
+import numpy as np
+from PIL import Image
+
+print("Testing PaddleOCR on GPU...")
+
+# Check GPU
+use_gpu = paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0
+print(f"GPU available: {use_gpu}")
+
+# Create OCR with explicit settings
+ocr = PaddleOCR(
+    lang="en",
+    use_gpu=use_gpu,
+    text_detection_model_name="PP-OCRv5_mobile_det",
+    text_recognition_model_name="en_PP-OCRv4_mobile_rec",
+    use_angle_cls=False
+)
+
+# Create simple test image with text
+img = Image.new('RGB', (200, 50), color='white')
+from PIL import ImageDraw, ImageFont
+draw = ImageDraw.Draw(img)
+draw.text((10, 10), "TEST TEXT", fill='black')
+img.save('test.png')
+
+# Test as numpy array (like WebSocket server does)
+img_array = np.array(img)
+print(f"Image shape: {img_array.shape}")
+
+# Run OCR
+result = ocr.ocr(img_array, cls=False)
+print(f"Results: {result}")
+
+if result and result[0]:
+    print(f"✅ Found {len(result[0])} text regions")
+else:
+    print("❌ No text found")
+    
+# Try with CPU to compare
+ocr_cpu = PaddleOCR(
+    lang="en",
+    use_gpu=False,
+    text_detection_model_name="PP-OCRv5_mobile_det",
+    text_recognition_model_name="en_PP-OCRv4_mobile_rec",
+    use_angle_cls=False
+)
+
+result_cpu = ocr_cpu.ocr(img_array, cls=False)
+print(f"\nCPU Results: {result_cpu}")
+if result_cpu and result_cpu[0]:
+    print(f"✅ CPU found {len(result_cpu[0])} text regions")
+else:
+    print("❌ CPU found no text")
+EOF
+
+python3 test_gpu_ocr.py
+
+DEBUGGING STEPS:
+----------------
+1. First run the test_gpu_ocr.py script above to see if basic OCR works on GPU
+
+2. If GPU fails but CPU works, try forcing CPU mode:
+   Edit src/utils/ocr_client.py and add after line 41:
+   use_gpu = False  # Force CPU mode
+   print("FORCING CPU MODE")
+
+3. Test with actual images:
+   - Download a test image: wget https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/release/2.7/doc/imgs/11.jpg
+   - Test it: python3 test_image.py 11.jpg
+
+4. Run WebSocket server:
+   python3 websocket_server.py
+   
+5. From another terminal (or locally), test WebSocket:
+   Update runpod/test_runpod_websocket.py with the RunPod URL
+   python3 runpod/test_runpod_websocket.py
+
+THINGS TO TRY:
+--------------
+1. Force CPU mode (edit src/utils/ocr_client.py)
+2. Try different model versions (remove model_name parameters)
+3. Check if it's a numpy array format issue
+4. Test with different image formats
+5. Check CUDNN version compatibility
+
+HYPOTHESIS:
+-----------
+The issue might be:
+1. GPU inference bug in PaddleOCR 2.8.1 with specific model versions
+2. CUDNN compatibility issue
+3. Image format/numpy array handling difference between CPU and GPU
+4. Model loading issue specific to GPU
+
+NUCLEAR OPTION:
+---------------
+If nothing works, we can:
+1. Force CPU mode in production (slower but works)
+2. Try different PaddleOCR/PaddlePaddle versions
+3. Use different models (server models instead of mobile)
+
+VERSIONS WE'RE USING:
+---------------------
+- paddlepaddle-gpu==2.6.1
+- paddleocr==2.8.1
+- CUDA 11.8
+- CUDNN 8 (devel)
+
+CONTACT:
+--------
+The repo is at: https://github.com/gudenvill/paddle1
+Working locally with these exact versions on CPU
+Not working on RunPod with GPU
