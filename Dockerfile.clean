@@ -1,0 +1,63 @@
+# Production Dockerfile with CUDNN Fix for PaddleOCR + GPU
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_VISIBLE_DEVICES=0
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=$CUDA_HOME/bin:$PATH
+ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3-venv \
+    libgomp1 \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    git \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install -r requirements.txt
+
+# CRITICAL FIX: Create symlinks for CUDNN libraries
+RUN echo "Creating CUDNN symlinks for PaddlePaddle..." && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn.so.8 /usr/local/cuda/lib64/libcudnn.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn.so.8 /usr/local/cuda/lib64/libcudnn.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_infer.so.8 /usr/local/cuda/lib64/libcudnn_ops_infer.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_infer.so.8 /usr/local/cuda/lib64/libcudnn_ops_infer.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_train.so.8 /usr/local/cuda/lib64/libcudnn_ops_train.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_train.so.8 /usr/local/cuda/lib64/libcudnn_ops_train.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_infer.so.8 /usr/local/cuda/lib64/libcudnn_cnn_infer.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_infer.so.8 /usr/local/cuda/lib64/libcudnn_cnn_infer.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_train.so.8 /usr/local/cuda/lib64/libcudnn_cnn_train.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_train.so.8 /usr/local/cuda/lib64/libcudnn_cnn_train.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_infer.so.8 /usr/local/cuda/lib64/libcudnn_adv_infer.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_infer.so.8 /usr/local/cuda/lib64/libcudnn_adv_infer.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_train.so.8 /usr/local/cuda/lib64/libcudnn_adv_train.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_train.so.8 /usr/local/cuda/lib64/libcudnn_adv_train.so && \
+    ldconfig && \
+    echo "CUDNN symlinks created successfully"
+
+# Copy application code
+COPY src/ ./src/
+COPY websocket_server.py .
+COPY README.md .
+
+# Expose WebSocket port
+EXPOSE 8765
+
+# Start the WebSocket server
+CMD ["python3", "websocket_server.py"]

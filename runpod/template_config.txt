@@ -1,7 +1,7 @@
 RunPod Template Configuration
 =============================
 
-Docker Image: gudenvill/paddle-ocr-websocket:cudnn-gpu
+Docker Image: gudenvill/paddle-ocr-websocket:production
 Container Disk: 20 GB
 Volume Disk: 0 GB
 Volume Mount Path: (empty)

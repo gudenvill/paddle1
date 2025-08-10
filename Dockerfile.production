@@ -1,0 +1,102 @@
+# Production Dockerfile with CUDNN Fix for PaddleOCR + GPU
+# This resolves the "Cannot load cudnn shared library" issue
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Set CUDA environment variables
+ENV CUDA_VISIBLE_DEVICES=0
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=$CUDA_HOME/bin:$PATH
+ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3-venv \
+    libgomp1 \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    git \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements first (for better layer caching)
+COPY requirements.txt .
+
+# Install Python dependencies with working compatible versions  
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install -r requirements.txt
+
+# CRITICAL FIX: Create symlinks for CUDNN libraries
+# PaddlePaddle looks for CUDNN in /usr/local/cuda/lib64/ but PyTorch installs them elsewhere
+RUN echo "Creating CUDNN symlinks for PaddlePaddle compatibility..." && \
+    # Wait for PyTorch installation to complete
+    python3 -c "import torch; print('PyTorch installed:', torch.__version__)" && \
+    # Create symlinks from PyTorch's CUDNN to where PaddlePaddle expects them
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn.so.8 /usr/local/cuda/lib64/libcudnn.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn.so.8 /usr/local/cuda/lib64/libcudnn.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_infer.so.8 /usr/local/cuda/lib64/libcudnn_ops_infer.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_infer.so.8 /usr/local/cuda/lib64/libcudnn_ops_infer.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_train.so.8 /usr/local/cuda/lib64/libcudnn_ops_train.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_ops_train.so.8 /usr/local/cuda/lib64/libcudnn_ops_train.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_infer.so.8 /usr/local/cuda/lib64/libcudnn_cnn_infer.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_infer.so.8 /usr/local/cuda/lib64/libcudnn_cnn_infer.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_train.so.8 /usr/local/cuda/lib64/libcudnn_cnn_train.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_cnn_train.so.8 /usr/local/cuda/lib64/libcudnn_cnn_train.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_infer.so.8 /usr/local/cuda/lib64/libcudnn_adv_infer.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_infer.so.8 /usr/local/cuda/lib64/libcudnn_adv_infer.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_train.so.8 /usr/local/cuda/lib64/libcudnn_adv_train.so.8 && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libcudnn_adv_train.so.8 /usr/local/cuda/lib64/libcudnn_adv_train.so && \
+    # Update library cache
+    ldconfig && \
+    echo "CUDNN symlinks created successfully"
+
+# Verify CUDNN is available
+RUN echo "Verifying CUDNN installation..." && \
+    ls -la /usr/local/cuda/lib64/libcudnn* | head -5 && \
+    echo "CUDNN verification complete"
+
+# Copy application code
+COPY src/ ./src/
+COPY websocket_server.py .
+COPY README.md .
+COPY start_server.sh .
+COPY fix_cudnn.sh .
+
+# Make scripts executable
+RUN chmod +x start_server.sh fix_cudnn.sh
+
+# Expose WebSocket port
+EXPOSE 8765
+
+# Pre-download PaddleOCR models to speed up first run
+RUN echo "Pre-downloading PaddleOCR models..." && \
+    python3 -c "from paddleocr import PaddleOCR; import paddle; print('Testing PaddleOCR model download...'); use_gpu = paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0; print(f'GPU available: {use_gpu}'); ocr = PaddleOCR(lang='en', use_gpu=use_gpu, text_detection_model_name='PP-OCRv5_mobile_det', text_recognition_model_name='en_PP-OCRv4_mobile_rec', use_angle_cls=False); print('PaddleOCR models downloaded successfully!')" && \
+    echo "Model download complete"
+
+# Test GPU functionality during build
+RUN echo "Testing GPU functionality..." && \
+    python3 -c "import paddle; print('Paddle CUDA support:', paddle.is_compiled_with_cuda()); print('GPU count:', paddle.device.cuda.device_count()); paddle.device.set_device('gpu:0') if paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0 else None; print('GPU test: SUCCESS' if paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0 else 'GPU test: CPU fallback mode')"
+
+# Health check to verify the server starts correctly
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python3 -c "
+import socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+result = sock.connect_ex(('localhost', 8765))
+sock.close()
+exit(0 if result == 0 else 1)
+"
+
+# Start the WebSocket server
+CMD ["python3", "websocket_server.py"]
