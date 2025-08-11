@@ -145,12 +145,27 @@ def parse_results(recognition_results) -> List[data_types.TextFinding]:
                 if word_box_data is not None:
                     individual_words = extract_individual_words(word_box_data, bbox_points)
                 
+                # Sanitize raw_word_box_data for JSON serialization
+                sanitized_word_box_data = None
+                if word_box_data is not None:
+                    try:
+                        # Convert numpy types to Python types for JSON serialization
+                        sanitized_word_box_data = [
+                            float(word_box_data[0]),  # total_width
+                            word_box_data[1],  # word_char_list (already strings)
+                            [[int(pos) for pos in positions] for positions in word_box_data[2]],  # position_list
+                            word_box_data[3]   # lang_list (already strings)
+                        ]
+                    except Exception as e:
+                        print(f"⚠️  Error sanitizing word_box_data: {str(e)}")
+                        sanitized_word_box_data = None
+                
                 finding = data_types.TextFinding(
                     text=text.strip(),  # Clean whitespace
                     confidence=float(confidence),
                     coordinates=coords,
                     individual_words=individual_words,
-                    raw_word_box_data=word_box_data  # Store raw data for maximum flexibility
+                    raw_word_box_data=sanitized_word_box_data  # JSON-safe raw data
                 )
                 
                 findings.append(finding)
