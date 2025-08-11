@@ -38,19 +38,47 @@ class RecognitionResult:
     bbox: BoundingBox   # Where this text is located
 
 @dataclass
+class WordFinding:
+    """Individual word with precise coordinates"""
+    word: str           # Individual word
+    confidence: float   # Confidence for this word
+    coordinates: BoundingBox  # Word-level bounding box
+    character_positions: Optional[List[Tuple[str, Tuple[int, int]]]] = None  # [(char, (x,y)), ...]
+    
+    def to_dict(self) -> dict:
+        return {
+            "word": self.word,
+            "confidence": self.confidence,
+            "coordinates": self.coordinates.to_dict(),
+            "character_positions": self.character_positions
+        }
+
+@dataclass
 class TextFinding:
-    """Final structured result combining detection and recognition"""
-    text: str           # The recognized text content
+    """Final structured result combining detection and recognition with multi-dimensional data"""
+    text: str           # The complete recognized text content
     confidence: float   # Overall confidence score
     coordinates: BoundingBox  # Precise location in image
     
+    # Multi-dimensional data
+    individual_words: Optional[List[WordFinding]] = None  # Word-by-word breakdown
+    raw_word_box_data: Optional[any] = None  # Raw PaddleOCR word_box_data for maximum flexibility
+    
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization"""
-        return {
+        result = {
             "text": self.text,
             "confidence": self.confidence,
             "coordinates": self.coordinates.to_dict()
         }
+        
+        if self.individual_words:
+            result["individual_words"] = [word.to_dict() for word in self.individual_words]
+            
+        if self.raw_word_box_data:
+            result["raw_word_box_data"] = self.raw_word_box_data
+            
+        return result
 
 @dataclass
 class VisualizationConfig:
