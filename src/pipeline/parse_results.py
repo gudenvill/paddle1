@@ -57,11 +57,12 @@ def extract_individual_words(word_box_data, overall_bbox_points):
             word_end_x = overall_x1 + (word_end_pos / total_width) * overall_width
             
             # Create bounding box for this word (approximate height same as overall)
+            # Ensure all coordinates are Python int, not numpy int64
             word_coords = data_types.BoundingBox(
-                top_left=(int(word_start_x), int(overall_y1)),
-                top_right=(int(word_end_x), int(overall_y1)),
-                bottom_right=(int(word_end_x), int(overall_y2)),
-                bottom_left=(int(word_start_x), int(overall_y2))
+                top_left=(int(float(word_start_x)), int(float(overall_y1))),
+                top_right=(int(float(word_end_x)), int(float(overall_y1))),
+                bottom_right=(int(float(word_end_x)), int(float(overall_y2))),
+                bottom_left=(int(float(word_start_x)), int(float(overall_y2)))
             )
             
             # Extract character positions if needed
@@ -69,7 +70,8 @@ def extract_individual_words(word_box_data, overall_bbox_points):
             for j, (char, pos) in enumerate(zip(chars, positions)):
                 char_x = overall_x1 + (pos / total_width) * overall_width
                 char_y = (overall_y1 + overall_y2) / 2  # Center vertically
-                char_positions.append((char, (int(char_x), int(char_y))))
+                # Ensure Python int, not numpy int64
+                char_positions.append((char, (int(float(char_x)), int(float(char_y)))))
             
             word_finding = data_types.WordFinding(
                 word=word,
@@ -130,11 +132,12 @@ def parse_results(recognition_results) -> List[data_types.TextFinding]:
                 
                 # Convert bbox points to BoundingBox object
                 # bbox_points is list of 4 corner points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                # Ensure all coordinates are Python int, not numpy int64
                 coords = data_types.BoundingBox(
-                    top_left=(int(bbox_points[0][0]), int(bbox_points[0][1])),
-                    top_right=(int(bbox_points[1][0]), int(bbox_points[1][1])),
-                    bottom_right=(int(bbox_points[2][0]), int(bbox_points[2][1])),
-                    bottom_left=(int(bbox_points[3][0]), int(bbox_points[3][1]))
+                    top_left=(int(float(bbox_points[0][0])), int(float(bbox_points[0][1]))),
+                    top_right=(int(float(bbox_points[1][0])), int(float(bbox_points[1][1]))),
+                    bottom_right=(int(float(bbox_points[2][0])), int(float(bbox_points[2][1]))),
+                    bottom_left=(int(float(bbox_points[3][0])), int(float(bbox_points[3][1])))
                 )
                 
                 # Extract individual words if word_box_data is available
