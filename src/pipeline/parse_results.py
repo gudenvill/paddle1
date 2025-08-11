@@ -37,8 +37,14 @@ def parse_results(recognition_results) -> List[data_types.TextFinding]:
         
         for i, result in enumerate(recognition_results):
             try:
-                # PaddleOCR 2.8.1 format: [bbox_points, (text, confidence)]
-                bbox_points, (text, confidence) = result
+                # PaddleOCR 2.8.1 format with return_word_box=True: [bbox_points, (text, confidence, word_box_data)]
+                if len(result[1]) == 3:
+                    # New format with word box data
+                    bbox_points, (text, confidence, word_box_data) = result
+                else:
+                    # Old format without word box data
+                    bbox_points, (text, confidence) = result
+                    word_box_data = None
                 
                 # Convert bbox points to BoundingBox object
                 # bbox_points is list of 4 corner points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
