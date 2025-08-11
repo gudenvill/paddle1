@@ -48,7 +48,8 @@ def get_ocr_client(config: Optional[data_types.OCRConfig] = None) -> PaddleOCR:
         text_recognition_model_name="en_PP-OCRv4_mobile_rec",
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
-        use_textline_orientation=False
+        use_textline_orientation=False,
+        return_word_box=True
     )
     
     return ocr_client

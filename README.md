@@ -1,279 +1,160 @@
-# PaddleOCR WebSocket Server
+# PaddleOCR WebSocket Service
 
-A high-performance OCR WebSocket server that processes base64-encoded images and returns text detection results with exact pixel coordinates. Built with PaddleOCR and optimized for GPU acceleration.
+GPU-accelerated OCR service that accepts base64 images via WebSocket and returns text with coordinates.
 
-## Features
+## Quick Start - Using the Service
 
-- 🚀 **WebSocket API** - Real-time OCR processing via WebSocket connection
-- 📸 **Base64 Input** - Accepts base64-encoded images (with or without data URL prefix)
-- 📍 **Exact Coordinates** - Returns precise pixel coordinates for each text region
-- 🎯 **High Accuracy** - Uses PaddleOCR v5 detection + v4 English recognition models
-- ⚡ **GPU Support** - Automatically detects and uses GPU when available
-- 🔄 **Persistent Connection** - Reuses OCR models across requests for efficiency
+### 1. WebSocket Endpoint
 
-## Quick Start
-
-### Running Locally
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the WebSocket server
-python websocket_server.py
+The service runs on RunPod. Your WebSocket URL format is:
+```
+wss://[POD_ID]-8765.proxy.runpod.net/
 ```
 
-Server will start on `ws://localhost:8765`
-
-### Running with Docker
-
-```bash
-# Build the Docker image
-docker build -t paddle-ocr-server .
-
-# Run with GPU support
-docker run --gpus all -p 8765:8765 paddle-ocr-server
-
-# Run without GPU
-docker run -p 8765:8765 paddle-ocr-server
+Example: If your pod ID is `mfn9rzbtwrg5c8`, your URL is:
+```
+wss://mfn9rzbtwrg5c8-8765.proxy.runpod.net/
 ```
 
-## API Documentation
+### 2. Sending Images for OCR
 
-### WebSocket Endpoint
-
-Connect to: `ws://localhost:8765` (or your server address)
-
-### Request Format
-
-Send a JSON message with the following structure:
-
-```json
-{
-  "image": "<base64_encoded_image_string>"
-}
-```
-
-The `image` field can be:
-- Raw base64 string: `"iVBORw0KGgoAAAANSUhEUgAAAAUA..."`
-- Data URL format: `"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."`
-- Supports PNG, JPG, JPEG, BMP formats
-
-### Response Format
-
-The server returns a JSON response with the following structure:
-
-```json
-{
-  "findings": [
-    {
-      "text": "Hello World",
-      "confidence": 0.9876,
-      "coordinates": {
-        "top_left": [100, 50],
-        "top_right": [200, 50],
-        "bottom_right": [200, 75],
-        "bottom_left": [100, 75]
-      }
-    }
-  ],
-  "metadata": {
-    "success": true,
-    "total_text_regions": 15,
-    "processing_time": 1.234,
-    "image_dimensions": {
-      "width": 1920,
-      "height": 1080
-    },
-    "has_visualization": false
-  }
-}
-```
-
-#### Response Fields
-
-**findings** (array): List of detected text regions
-- `text` (string): The recognized text content
-- `confidence` (float): Recognition confidence score (0.0 to 1.0)
-- `coordinates` (object): Exact pixel coordinates of the text bounding box
-  - `top_left` [x, y]: Top-left corner coordinates
-  - `top_right` [x, y]: Top-right corner coordinates  
-  - `bottom_right` [x, y]: Bottom-right corner coordinates
-  - `bottom_left` [x, y]: Bottom-left corner coordinates
-
-**metadata** (object): Processing metadata
-- `success` (boolean): Whether OCR processing succeeded
-- `total_text_regions` (integer): Number of text regions detected
-- `processing_time` (float): Time taken to process in seconds
-- `image_dimensions` (object): Original image dimensions
-  - `width` (integer): Image width in pixels
-  - `height` (integer): Image height in pixels
-- `has_visualization` (boolean): Always false for WebSocket (no visualization)
-
-### Error Response
-
-If an error occurs, the response will have `success: false`:
-
-```json
-{
-  "metadata": {
-    "success": false,
-    "error": {
-      "message": "Failed to decode base64 image",
-      "details": "Invalid base64 string",
-      "timestamp": "2025-08-07T10:30:45.123Z"
-    }
-  }
-}
-```
-
-## Client Examples
-
-### Python Client Example
+Send a JSON message with your base64-encoded image:
 
 ```python
 import asyncio
-import websockets
 import json
 import base64
+import websockets
+from PIL import Image
+import io
 
-async def ocr_image(image_path):
-    # Read and encode image
+async def get_ocr(image_path, runpod_url):
+    # Load and encode image
     with open(image_path, 'rb') as f:
-        image_base64 = base64.b64encode(f.read()).decode('utf-8')
+        img_bytes = f.read()
+    base64_str = base64.b64encode(img_bytes).decode('utf-8')
     
-    # Connect to WebSocket server
-    async with websockets.connect('ws://localhost:8765') as websocket:
-        # Send image for OCR
-        request = {"image": image_base64}
-        await websocket.send(json.dumps(request))
+    # Connect and send
+    async with websockets.connect(runpod_url) as websocket:
+        # Send image
+        await websocket.send(json.dumps({
+            "image": f"data:image/png;base64,{base64_str}"
+        }))
         
-        # Receive result
+        # Get results
         response = await websocket.recv()
         result = json.loads(response)
         
-        # Process result
-        if result['metadata']['success']:
-            for finding in result['findings']:
-                print(f"Text: {finding['text']}")
-                print(f"Confidence: {finding['confidence']:.2%}")
-                coords = finding['coordinates']
-                print(f"Location: ({coords['top_left'][0]}, {coords['top_left'][1]})")
-        
-        return result
+        if result["status"] == "success":
+            print(f"Found {len(result['data']['text_regions'])} text regions")
+            for region in result['data']['text_regions']:
+                print(f"Text: {region['text']}")
+                print(f"Coordinates: {region['coordinates']}")
+                print(f"Confidence: {region['confidence']}")
+        else:
+            print(f"Error: {result['error']}")
 
-# Run the client
-asyncio.run(ocr_image('test.png'))
+# Usage
+runpod_url = "wss://YOUR_POD_ID-8765.proxy.runpod.net/"
+asyncio.run(get_ocr("image.png", runpod_url))
 ```
 
-### JavaScript Client Example
+### 3. Response Format
+
+Success response:
+```json
+{
+    "status": "success",
+    "data": {
+        "text_regions": [
+            {
+                "text": "Hello World",
+                "confidence": 0.98,
+                "coordinates": [[10, 20], [100, 20], [100, 40], [10, 40]]
+            }
+        ],
+        "image_dimensions": {
+            "width": 1920,
+            "height": 1080
+        },
+        "processing_time": 1.23
+    }
+}
+```
+
+Error response:
+```json
+{
+    "status": "error",
+    "error": "Error message here"
+}
+```
+
+### 4. Simple JavaScript Example
 
 ```javascript
-const ws = new WebSocket('ws://localhost:8765');
+const ws = new WebSocket('wss://YOUR_POD_ID-8765.proxy.runpod.net/');
 
-ws.onopen = function() {
+ws.onopen = () => {
     // Convert image to base64
-    const canvas = document.getElementById('myCanvas');
-    const base64Image = canvas.toDataURL('image/png').split(',')[1];
+    const base64Image = "data:image/png;base64,YOUR_BASE64_STRING";
     
-    // Send for OCR
+    // Send to OCR
     ws.send(JSON.stringify({
         image: base64Image
     }));
 };
 
-ws.onmessage = function(event) {
+ws.onmessage = (event) => {
     const result = JSON.parse(event.data);
-    
-    if (result.metadata.success) {
-        result.findings.forEach(finding => {
-            console.log(`Found text: "${finding.text}" at`, finding.coordinates);
-            // Draw bounding box on canvas using coordinates
-            drawBoundingBox(finding.coordinates);
-        });
+    if (result.status === 'success') {
+        console.log('OCR Results:', result.data.text_regions);
     }
 };
 ```
 
-### cURL Example (via websocat)
+## Deployment (For Administrators)
 
+### RunPod Template Settings
+- **Container Image**: Use PyTorch 2.1.0 with CUDA 11.8
+- **Container Disk**: 20 GB
+- **Volume Disk**: 0 GB
+- **HTTP Port**: 8765
+- **GPU**: Any CUDA 11.8 compatible
+
+### Setup Commands
 ```bash
-# Install websocat first
-# Then encode image and send
-base64 image.png | jq -Rs '{image: .}' | websocat ws://localhost:8765
+cd /workspace
+git clone https://github.com/gudenvill/paddle1.git
+cd paddle1
+chmod +x runpod_setup.sh
+./runpod_setup.sh
 ```
 
-## Coordinate System
-
-The coordinate system uses standard image coordinates:
-- Origin (0,0) is at the **top-left** corner
-- X increases to the **right**
-- Y increases **downward**
-- All coordinates are in **pixels**
-
-Example coordinate interpretation:
+The server will start automatically and show:
 ```
-top_left: [100, 50]     top_right: [200, 50]
-    +------------------+
-    |                  |
-    |   "Hello World"  |
-    |                  |
-    +------------------+
-bottom_left: [100, 75]  bottom_right: [200, 75]
+GPU environment detected: True
 ```
 
-## Performance Considerations
+## Features
 
-1. **Model Loading**: The OCR models are loaded once at server startup (~7-8 seconds)
-2. **Processing Time**: Typical processing time is 10-15 seconds per image on CPU, 1-3 seconds on GPU
-3. **Image Size**: Larger images take longer. Consider resizing if coordinates aren't critical
-4. **Connection Reuse**: Keep WebSocket connection open for multiple requests to avoid handshake overhead
+- ✅ GPU-accelerated OCR (1-2 seconds per image)
+- ✅ Accepts base64 encoded images
+- ✅ Returns text with exact pixel coordinates
+- ✅ WebSocket for real-time processing
+- ✅ Supports English text
+- ✅ High accuracy with PaddleOCR
 
-## Environment Variables
+## Notes
 
-- `CUDA_VISIBLE_DEVICES`: Set to GPU ID to use specific GPU (e.g., "0" for first GPU)
-- `PYTHONUNBUFFERED`: Set to "1" for immediate log output
+- First request may take longer (30-60s) while models download
+- Subsequent requests are fast (1-2s with GPU)
+- Maximum image size: 10MB (base64 encoded)
+- Supports PNG, JPG, JPEG formats
 
-## Architecture
+## Getting Your Pod ID
 
-The server follows the GOLDEN RULE architecture - one function per file for maximum modularity:
-
-```
-src/
-├── pipeline/           # OCR processing pipeline
-│   ├── recognize_text.py
-│   ├── parse_results.py
-│   └── format_json.py
-├── utils/             # Utilities
-│   └── ocr_client.py  # PaddleOCR client initialization
-├── ocr_types/         # Type definitions
-│   └── types.py       # Data structures
-└── error/             # Error handling
-    └── handle_errors.py
-```
-
-## Troubleshooting
-
-### Issue: Server won't start
-- Check if port 8765 is already in use
-- Ensure all dependencies are installed
-- Check Python version (requires 3.8+)
-
-### Issue: GPU not detected
-- Verify CUDA installation
-- Check `nvidia-smi` output
-- Ensure paddlepaddle-gpu is installed (not regular paddlepaddle)
-
-### Issue: Poor OCR accuracy
-- Ensure image quality is good (min 300 DPI recommended)
-- Check if text is clear and not rotated
-- Verify you're using English models for English text
-
-### Issue: Slow processing
-- Consider using GPU for acceleration
-- Reduce image size if exact coordinates aren't needed
-- Keep WebSocket connection open for multiple requests
-
-## License
-
-This project uses PaddleOCR which is licensed under Apache 2.0.
+1. Go to RunPod dashboard
+2. Find your running pod
+3. The pod ID is shown (e.g., `mfn9rzbtwrg5c8`)
+4. Your WebSocket URL is: `wss://[POD_ID]-8765.proxy.runpod.net/`

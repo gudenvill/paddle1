@@ -14,10 +14,10 @@ import sys
 
 async def test_runpod_ocr():
     # RunPod WebSocket URL (change http to ws)
-    runpod_url = "wss://mfn9rzbtwrg5c8-8765.proxy.runpod.net/"
+    runpod_url = "wss://11r93eluhtfrbh-8765.proxy.runpod.net/"
     
     # Load test image
-    image_path = "input/2.png"
+    image_path = "input/53.png"
     
     print("🚀 RunPod WebSocket OCR Test")
     print(f"📡 Server: {runpod_url}")

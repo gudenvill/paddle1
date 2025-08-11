@@ -184,7 +184,7 @@ class WebSocketOCRServer:
         # Start WebSocket server
         logger.info(f"🌐 Starting WebSocket server on {self.host}:{self.port}")
         
-        async with websockets.serve(self.handle_client, self.host, self.port):
+        async with websockets.serve(self.handle_client, self.host, self.port, max_size=5*1024*1024):
             logger.info("🚀 WebSocket OCR Server is running!")
             logger.info(f"📡 Listening on ws://{self.host}:{self.port}")
             logger.info("💡 Send JSON with 'image' field containing base64-encoded image")
